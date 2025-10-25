@@ -1,0 +1,148 @@
+Kuku
+location: guinea
+ethnic group: manya
+occasion: women celebrating good fishing harvest
+
+Bassa
+location: Liberia
+rhythm description: slap slap, tone tone
+notes: precursor to kuku, very fast
+
+Badi
+names: didadi
+notes: Badi also the name of the dundunba like drum for didadi (plays solo) 
+location: Sikasso
+ethnica group: Bamana 
+occasion: Festivals, general celebration 
+instruments: Konkonee, Badi
+
+Djeli foli
+names: lamban, sandia 
+notes: Djeli (griot), song about being djeli 
+instruments: Balafone, Kora, Djeli dundunba, Djeli ingoni
+lyric translation: 
+the state of being a djeli
+God created the mouth of the djeli
+God created the mouth of the king
+lyrics: 
+A djeli aaa-aa     
+Ala leka djeli aa-daaa  
+Ala leka mansa yaaa-daa 
+Tama tari yaaa tara ahh
+
+Madan 
+notes: Break #1 
+location: Mali, guinea 
+ethnic group: Solinke 
+occasion: Harvest, festivals 
+rhythm description: 
+Ta tata toto 
+Gin toto gin ta
+
+Koruduga
+rhythm description: tone slap over and over
+notes: challenging, in 6
+
+Gbe gbe 
+location: Ivory coast
+
+Soli 
+names: suku, donba
+locations: mali, senegal, guinea, mandingo
+ethnic groups: malinke
+notes: suku in Mali, Donba in Senegal, Mali (Malinke), guinea, Senegal; throughout Mandingo - Mali, guinea, Senegal; donba means big dance; Different  than furasoli/solifura
+occasion: Started as boys circumcision rhythm, mens rights of passage, now played for lots of celebration (weddings, etc)
+rhythm description: Break #2, tatota, left to the right; first, second, marching, offset, 2 bass slaps; Pop goes the weasel; Gin (left) ta tota gin (right) taototota
+lyrics: 
+Soooliyayaaa mandeee
+Mande soooliyayaaa mandeee
+
+Soli fura
+names: fura soli 
+location: Mali
+ethnic groups: malinke
+rhythm description: Break #1, Ta tata toto, Toto to gin ta 
+occasion: Traditionally played for boys right of passage, circumcision 
+lyrics:
+Layla, musonya lende 
+Layla, odentesirana (ends with break) 
+lyric translation: 
+There is nothing but God 
+The son of a good woman should not be scared
+rhythm description: 
+Solos 
+Tatata toto tatata gingin 
+Tatata toto tatata gintagin 
+Gin--ta tatoto gin ta--ta
+
+Solinke 
+names: soninke
+ethnic group: solinke
+
+Degu Degu 
+rhythm description: 
+Tatatoto 
+Tatata toto 
+Tatatata toto
+
+Woloso 
+notes: About knowing where you come from; Kai region; Kasonke dundun; Similar region ; Maraca (ethnic group)/take
+locations: Mali
+rhythm description: Totabinta Tatatotota
+lyrics:
+Mabengajonya 
+Dokahonronya 
+Neebengajonyaife 
+Dokahonronya
+
+Sunu 
+notes: Named after a woman who was a great dancer, they named rhythm after her when she passed
+
+Yamama 
+location: Guinea
+notes: masked dance Mask represents femininity, protecting of children 
+lyrics: Yamadu yee Yamadu yee bonsu Yamadu yee bonsu
+
+Sosone 
+location: Guinea 
+ethnic group: Baga people 
+notes: 6 timing; Kakilambe?
+
+
+Tansole 
+rhythm description: Break #1 
+ethnic groups: Bamana
+notes: Adapted from comofoli (como was a mask associated with a secret society of men) 
+lyrics: 
+Minyennakanuni mana sinyenakamuni denta 
+Dugu lamini dabora Two birds 
+lyric translation: The one who can stay up until midnight should not compare to the one who stays up all night
+
+Mane 
+ethnic groups: Susu
+lyrics:
+Iradie...iradie 
+Gine bere sinera dira 
+lyric translation:
+Daddy's little girl all grown up 
+occasion: Often played for weddings
+
+Manjani 
+locations: Guinea, Mali 
+ethnic groups: Malinke
+occasion: Coming of age, pre-adolescence girls 
+notes: Denadon is precursor dance, girls on men's shoulders dancing; bring to center and then dance manjani
+
+Koteba
+ethnic group: Segu 
+rhythm description: Tatatatoto
+notes: koteba means big snail
+
+Farabakan
+notes: sound of faraban (village) Dekudeku Ngri/ wasolonka - sound of wasolon (village/people)
+
+Guinea fare
+notes: guinea fare means women dance
+
+Egedege
+ethnic group: Igbo
