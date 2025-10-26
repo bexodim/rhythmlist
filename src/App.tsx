@@ -4,9 +4,10 @@ import { RecordingFlow } from './components/RecordingFlow';
 import { BottomNav } from './components/BottomNav';
 import { AudioPlayer } from './components/AudioPlayer';
 import { RecordingDetailPage } from './components/RecordingDetailPage';
-import { getAllRhythms, getTagById, getRhythmById, getRecordingsByRhythmId, getRecordingById, getTagsByIds, createRecording, updateRhythm, createTag, deleteRecording, updateRecording } from './db/storage';
+import { getAllRhythms, getTagById, getRhythmById, getRecordingsByRhythmId, getRecordingById, getTagsByIds, createRecording, updateRhythm, createTag, deleteRecording, updateRecording, exportAllData, importAllData } from './db/storage';
 import type { Rhythm, Recording } from './types';
 import { importRhythmsData } from './utils/importData';
+import { useAudioPlayback } from './context/AudioPlaybackContext';
 
 function App() {
   // RUN IMPORT ONCE - Remove this after import is complete
@@ -47,21 +48,8 @@ function RhythmListPage() {
   const [rhythmTags, setRhythmTags] = useState<Map<string, string[]>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
 
-  // Audio playback state
-  const [playingRecordingId, setPlayingRecordingId] = useState<string | null>(null);
-  const [isLooping, setIsLooping] = useState(false);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const audioBufferRef = useRef<AudioBuffer | null>(null);
-  const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
-  const gainNodeRef = useRef<GainNode | null>(null);
-  const crossfadeGainNodeRef = useRef<GainNode | null>(null);
-  const startTimeRef = useRef<number>(0);
-  const pauseTimeRef = useRef<number>(0);
-  const animationFrameRef = useRef<number>(0);
-  const loopPointsRef = useRef<{ start: number; end: number } | null>(null);
-  const isLoopingRef = useRef<boolean>(false);
-  const crossfadeScheduledRef = useRef<boolean>(false);
-  const nextSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  // Use global audio playback context
+  const { playRecording, isPlaying } = useAudioPlayback();
 
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -311,173 +299,6 @@ function RhythmListPage() {
     setSearchQuery('');
   };
 
-  // Audio playback handlers
-  const CROSSFADE_DURATION = 0.0; // No crossfade - clean loop
-
-  const stopPlayback = useCallback(() => {
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = 0;
-    }
-    if (sourceNodeRef.current) {
-      try {
-        sourceNodeRef.current.stop();
-      } catch (e) {
-        // Already stopped
-      }
-      sourceNodeRef.current = null;
-    }
-    crossfadeScheduledRef.current = false;
-  }, []);
-
-  const startPlayback = useCallback(async (startFrom: number = 0, fadeIn: boolean = false) => {
-    const audioContext = audioContextRef.current;
-    const audioBuffer = audioBufferRef.current;
-    const gainNode = gainNodeRef.current;
-
-    if (!audioContext || !audioBuffer || !gainNode) return;
-
-    if (audioContext.state === 'closed') return;
-    if (audioContext.state === 'suspended') {
-      await audioContext.resume();
-    }
-
-    stopPlayback();
-
-    const source = audioContext.createBufferSource();
-    source.buffer = audioBuffer;
-
-    // Create a gain node for crossfading
-    const crossfadeGain = audioContext.createGain();
-    crossfadeGain.connect(gainNode);
-    source.connect(crossfadeGain);
-    crossfadeGainNodeRef.current = crossfadeGain;
-
-    // Apply fade in if requested
-    if (fadeIn) {
-      crossfadeGain.gain.setValueAtTime(0, audioContext.currentTime);
-      crossfadeGain.gain.linearRampToValueAtTime(1, audioContext.currentTime + CROSSFADE_DURATION);
-    } else {
-      crossfadeGain.gain.setValueAtTime(1, audioContext.currentTime);
-    }
-
-    // Determine playback range
-    let offset = startFrom;
-    let playDuration: number | undefined = undefined;
-
-    if (isLoopingRef.current && loopPointsRef.current) {
-      offset = startFrom >= loopPointsRef.current.start ? startFrom : loopPointsRef.current.start;
-      playDuration = loopPointsRef.current.end - offset;
-    }
-
-    source.start(0, offset, playDuration);
-    sourceNodeRef.current = source;
-    startTimeRef.current = audioContext.currentTime;
-    pauseTimeRef.current = offset;
-    crossfadeScheduledRef.current = false;
-  }, [stopPlayback, CROSSFADE_DURATION]);
-
-  const updatePlayback = useCallback(() => {
-    const audioContext = audioContextRef.current;
-    const audioBuffer = audioBufferRef.current;
-    const gainNode = gainNodeRef.current;
-    const crossfadeGain = crossfadeGainNodeRef.current;
-
-    if (!audioContext || !audioBuffer || !gainNode) {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-      return;
-    }
-
-    const elapsed = audioContext.currentTime - startTimeRef.current;
-    let newTime = pauseTimeRef.current + elapsed;
-
-    // Handle looping
-    if (isLoopingRef.current && loopPointsRef.current) {
-      if (newTime >= loopPointsRef.current.end) {
-        // Immediate loop back to start
-        stopPlayback();
-        startPlayback(loopPointsRef.current.start, false);
-      }
-    } else if (!isLoopingRef.current && audioBuffer.duration > 0 && newTime >= audioBuffer.duration) {
-      // Stop at end in normal mode
-      stopPlayback();
-      isLoopingRef.current = false;
-      setPlayingRecordingId(null);
-      setIsLooping(false);
-      return;
-    }
-
-    animationFrameRef.current = requestAnimationFrame(updatePlayback);
-  }, [stopPlayback, startPlayback, CROSSFADE_DURATION]);
-
-  const handlePlay = async (recordingId: string, audioBlob: Blob, loop: boolean, loopPoints?: { start: number; end: number } | null) => {
-    // If clicking the same recording with same mode, stop playback
-    if (playingRecordingId === recordingId && isLooping === loop) {
-      stopPlayback();
-      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-        audioContextRef.current.close();
-      }
-      audioContextRef.current = null;
-      audioBufferRef.current = null;
-      gainNodeRef.current = null;
-      crossfadeGainNodeRef.current = null;
-      isLoopingRef.current = false;
-      setPlayingRecordingId(null);
-      setIsLooping(false);
-      return;
-    }
-
-    // Stop any current playback
-    stopPlayback();
-    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-      await audioContextRef.current.close();
-    }
-
-    // Set up new playback
-    try {
-      const audioContext = new AudioContext();
-      audioContextRef.current = audioContext;
-
-      const arrayBuffer = await audioBlob.arrayBuffer();
-      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-      audioBufferRef.current = audioBuffer;
-
-      const gainNode = audioContext.createGain();
-      gainNode.connect(audioContext.destination);
-      gainNodeRef.current = gainNode;
-
-      loopPointsRef.current = loopPoints || null;
-      isLoopingRef.current = loop;
-      setPlayingRecordingId(recordingId);
-      setIsLooping(loop);
-
-      // Start from loop point only if looping, otherwise start from beginning
-      const startFrom = loop && loopPoints ? loopPoints.start : 0;
-      await startPlayback(startFrom);
-      animationFrameRef.current = requestAnimationFrame(updatePlayback);
-    } catch (error) {
-      console.error('Error playing audio:', error);
-      isLoopingRef.current = false;
-      setPlayingRecordingId(null);
-      setIsLooping(false);
-    }
-  };
-
-  // Cleanup audio on unmount
-  useEffect(() => {
-    return () => {
-      stopPlayback();
-      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-        audioContextRef.current.close();
-      }
-      audioContextRef.current = null;
-      audioBufferRef.current = null;
-      gainNodeRef.current = null;
-      crossfadeGainNodeRef.current = null;
-    };
-  }, [stopPlayback]);
 
   const activeFilterCount =
     selectedFilters.alternateNames.length +
@@ -551,6 +372,42 @@ function RhythmListPage() {
           <option value="name-asc">A-Z</option>
           <option value="recordings">Most recordings</option>
         </select>
+
+        {/* Export button */}
+        <button
+          onClick={async () => {
+            await exportAllData();
+          }}
+          className="btn-secondary px-3 py-2 flex items-center gap-1"
+          title="Export all data"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+        </button>
+
+        {/* Import button */}
+        <label className="btn-secondary px-3 py-2 flex items-center gap-1 cursor-pointer" title="Import data">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+          </svg>
+          <input
+            type="file"
+            accept="application/json"
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (file) {
+                const result = await importAllData(file);
+                alert(result.message);
+                if (result.success) {
+                  loadRhythms();
+                }
+                e.target.value = ''; // Reset input
+              }
+            }}
+            className="hidden"
+          />
+        </label>
       </div>
 
       {/* Filter menu */}
@@ -734,16 +591,16 @@ function RhythmListPage() {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              handlePlay(favoriteRecording.id, favoriteRecording.audioBlob!, false, favoriteRecording.loopPoints);
+                              playRecording(favoriteRecording.id, favoriteRecording.audioBlob!, false, favoriteRecording.loopPoints);
                             }}
                             className={`p-1 rounded transition-colors ${
-                              playingRecordingId === favoriteRecording.id && !isLooping
+                              isPlaying(favoriteRecording.id, false)
                                 ? 'bg-blue-600 text-white'
                                 : 'hover:bg-gray-700 text-gray-400'
                             }`}
                             title="Play"
                           >
-                            {playingRecordingId === favoriteRecording.id && !isLooping ? (
+                            {isPlaying(favoriteRecording.id, false) ? (
                               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                                 <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
                               </svg>
@@ -753,23 +610,25 @@ function RhythmListPage() {
                               </svg>
                             )}
                           </button>
-                          {/* Loop button */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handlePlay(favoriteRecording.id, favoriteRecording.audioBlob!, true, favoriteRecording.loopPoints);
-                            }}
-                            className={`p-1 rounded transition-colors ${
-                              playingRecordingId === favoriteRecording.id && isLooping
-                                ? 'bg-blue-600 text-white'
-                                : 'hover:bg-gray-700 text-gray-400'
-                            }`}
-                            title={favoriteRecording.loopPoints ? 'Loop (saved points)' : 'Loop (full recording)'}
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                            </svg>
-                          </button>
+                          {/* Loop button - only show if loop points are set */}
+                          {favoriteRecording.loopPoints && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                playRecording(favoriteRecording.id, favoriteRecording.audioBlob!, true, favoriteRecording.loopPoints);
+                              }}
+                              className={`p-1 rounded transition-colors ${
+                                isPlaying(favoriteRecording.id, true)
+                                  ? 'bg-blue-600 text-white'
+                                  : 'hover:bg-gray-700 text-gray-400'
+                              }`}
+                              title="Loop (saved points)"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                              </svg>
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
@@ -826,59 +685,7 @@ function RecordingListItem({ recording, onUpdateTitle, onDelete }: {
   onDelete: (id: string) => void;
 }) {
   const navigate = useNavigate();
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (recording.audioBlob) {
-      const url = URL.createObjectURL(recording.audioBlob);
-      setAudioUrl(url);
-      return () => URL.revokeObjectURL(url);
-    }
-  }, [recording.audioBlob]);
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    const updateTime = () => setCurrentTime(audio.currentTime);
-    const updateDuration = () => setDuration(audio.duration);
-    const handleEnded = () => setIsPlaying(false);
-
-    audio.addEventListener('timeupdate', updateTime);
-    audio.addEventListener('loadedmetadata', updateDuration);
-    audio.addEventListener('ended', handleEnded);
-
-    return () => {
-      audio.removeEventListener('timeupdate', updateTime);
-      audio.removeEventListener('loadedmetadata', updateDuration);
-      audio.removeEventListener('ended', handleEnded);
-    };
-  }, [audioUrl]);
-
-  const togglePlayPause = () => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    if (isPlaying) {
-      audio.pause();
-    } else {
-      audio.play();
-    }
-    setIsPlaying(!isPlaying);
-  };
-
-  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    const newTime = parseFloat(e.target.value);
-    audio.currentTime = newTime;
-    setCurrentTime(newTime);
-  };
+  const { playRecording, isPlaying: isPlayingGlobal } = useAudioPlayback();
 
   const formatTime = (seconds: number): string => {
     if (isNaN(seconds)) return '0:00';
@@ -887,16 +694,12 @@ function RecordingListItem({ recording, onUpdateTitle, onDelete }: {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const progressPercentage = duration > 0 ? (currentTime / duration) * 100 : 0;
-
   const handleRecordingClick = () => {
     navigate(`/recording/${recording.id}`);
   };
 
   return (
     <div className="bg-gray-800 rounded-lg p-5 mb-3">
-      {audioUrl && <audio ref={audioRef} src={audioUrl} preload="metadata" />}
-
       <div className="flex items-start gap-4">
         {/* Content */}
         <div className="flex-1 min-w-0 cursor-pointer" onClick={handleRecordingClick}>
@@ -911,46 +714,57 @@ function RecordingListItem({ recording, onUpdateTitle, onDelete }: {
               `${recording.location} • ${new Date(recording.recordedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
             ) : recording.location || (recording.recordedDate && new Date(recording.recordedDate).toLocaleDateString())}
           </p>
-
-          {/* Progress bar */}
-          <div className="relative">
-            <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-blue-500 transition-all duration-100"
-                style={{ width: `${progressPercentage}%` }}
-              />
-            </div>
-            <input
-              type="range"
-              min="0"
-              max={duration || 0}
-              value={currentTime}
-              onChange={handleSeek}
-              className="absolute inset-0 w-full opacity-0 cursor-pointer"
-            />
-          </div>
         </div>
 
-        {/* Duration and play button */}
+        {/* Duration and play/loop buttons */}
         <div className="flex flex-col items-end gap-3 flex-shrink-0">
-          <span className="text-sm text-gray-400 font-normal">{formatTime(duration)}</span>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              togglePlayPause();
-            }}
-            className="w-10 h-10 rounded-full bg-transparent hover:bg-gray-700 flex items-center justify-center transition-colors"
-          >
-            {isPlaying ? (
-              <svg className="w-7 h-7 text-blue-400" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
-              </svg>
-            ) : (
-              <svg className="w-7 h-7 text-blue-400" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M8 5v14l11-7z" />
-              </svg>
-            )}
-          </button>
+          <span className="text-sm text-gray-400 font-normal">{formatTime(recording.duration)}</span>
+          {recording.audioBlob && (
+            <div className="flex items-center gap-1">
+              {/* Play button */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  playRecording(recording.id, recording.audioBlob!, false, recording.loopPoints);
+                }}
+                className={`p-1 rounded transition-colors ${
+                  isPlayingGlobal(recording.id, false)
+                    ? 'bg-blue-600 text-white'
+                    : 'hover:bg-gray-700 text-gray-400'
+                }`}
+                title="Play"
+              >
+                {isPlayingGlobal(recording.id, false) ? (
+                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
+                  </svg>
+                ) : (
+                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                )}
+              </button>
+              {/* Loop button - only show if loop points are set */}
+              {recording.loopPoints && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    playRecording(recording.id, recording.audioBlob!, true, recording.loopPoints);
+                  }}
+                  className={`p-1 rounded transition-colors ${
+                    isPlayingGlobal(recording.id, true)
+                      ? 'bg-blue-600 text-white'
+                      : 'hover:bg-gray-700 text-gray-400'
+                  }`}
+                  title="Loop (saved points)"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
