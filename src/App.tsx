@@ -4,10 +4,11 @@ import { RecordingFlow } from './components/RecordingFlow';
 import { BottomNav } from './components/BottomNav';
 import { AudioPlayer } from './components/AudioPlayer';
 import { RecordingDetailPage } from './components/RecordingDetailPage';
-import { getAllRhythms, getTagById, getRhythmById, getRecordingsByRhythmId, getRecordingById, getTagsByIds, createRecording, updateRhythm, createTag, deleteRecording, updateRecording, exportAllData, importAllData } from './db/storage';
+import { getAllRhythms, getTagById, getRhythmById, getRecordingsByRhythmId, getRecordingById, getTagsByIds, createRecording, updateRhythm, createTag, deleteRecording, updateRecording, exportAllData, importAllData, getAllRecordings } from './db/storage';
 import type { Rhythm, Recording } from './types';
 import { importRhythmsData } from './utils/importData';
 import { useAudioPlayback } from './context/AudioPlaybackContext';
+import { db } from './db/schema';
 
 function App() {
   // RUN IMPORT ONCE - Remove this after import is complete
@@ -30,7 +31,7 @@ function App() {
           <Route path="/rhythms" element={<RhythmListPage />} />
           <Route path="/rhythm/:id" element={<RhythmDetailPage />} />
           <Route path="/recording/:id" element={<RecordingDetailPage />} />
-          <Route path="/stats" element={<StatsPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
           <Route path="/debug" element={<DebugPage />} />
         </Routes>
       </main>
@@ -396,42 +397,6 @@ function RhythmListPage() {
           <option value="name-asc">A-Z</option>
           <option value="recordings">Most recordings</option>
         </select>
-
-        {/* Export button */}
-        <button
-          onClick={async () => {
-            await exportAllData();
-          }}
-          className="btn-secondary px-3 py-2 flex items-center gap-1"
-          title="Export all data"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-          </svg>
-        </button>
-
-        {/* Import button */}
-        <label className="btn-secondary px-3 py-2 flex items-center gap-1 cursor-pointer" title="Import data">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-          </svg>
-          <input
-            type="file"
-            accept="application/json"
-            onChange={async (e) => {
-              const file = e.target.files?.[0];
-              if (file) {
-                const result = await importAllData(file);
-                alert(result.message);
-                if (result.success) {
-                  loadRhythms();
-                }
-                e.target.value = ''; // Reset input
-              }
-            }}
-            className="hidden"
-          />
-        </label>
       </div>
 
       {/* Filter menu */}
@@ -1517,12 +1482,202 @@ function DebugPage() {
   );
 }
 
-// Stats Page (Placeholder)
-function StatsPage() {
+// Settings Page
+function SettingsPage() {
+  const [dbStats, setDbStats] = useState<{ rhythms: number; recordings: number; tags: number } | null>(null);
+  const [autoBackup, setAutoBackup] = useState(() => {
+    return localStorage.getItem('autoBackup') === 'true';
+  });
+  const [lastBackup, setLastBackup] = useState(() => {
+    return localStorage.getItem('lastBackup');
+  });
+
+  useEffect(() => {
+    const loadStats = async () => {
+      const rhythms = await getAllRhythms();
+      const recordings = await getAllRecordings();
+      const tags = await db.tags.toArray();
+      setDbStats({ rhythms: rhythms.length, recordings: recordings.length, tags: tags.length });
+    };
+    loadStats();
+  }, []);
+
+  const handleExport = async () => {
+    try {
+      await exportAllData();
+      const now = new Date().toISOString();
+      localStorage.setItem('lastBackup', now);
+      setLastBackup(now);
+      alert('✅ Data exported successfully!');
+    } catch (error) {
+      console.error('Export error:', error);
+      alert('❌ Export failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    }
+  };
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const confirmed = window.confirm(
+      '⚠️ WARNING: This will REPLACE ALL your current data with the imported data.\n\n' +
+      'Current database:\n' +
+      `- ${dbStats?.rhythms || 0} rhythms\n` +
+      `- ${dbStats?.recordings || 0} recordings\n` +
+      `- ${dbStats?.tags || 0} tags\n\n` +
+      'Are you absolutely sure you want to continue?'
+    );
+
+    if (!confirmed) {
+      e.target.value = '';
+      return;
+    }
+
+    try {
+      const result = await importAllData(file);
+
+      if (result.success) {
+        alert('✅ ' + result.message + '\n\nThe page will now reload.');
+        window.location.reload();
+      } else {
+        alert('❌ ' + result.message);
+      }
+    } catch (error) {
+      console.error('Import error:', error);
+      alert('❌ Import failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    }
+
+    e.target.value = '';
+  };
+
+  const handleAutoBackupToggle = () => {
+    const newValue = !autoBackup;
+    setAutoBackup(newValue);
+    localStorage.setItem('autoBackup', String(newValue));
+
+    if (newValue) {
+      alert('🔄 Auto-backup enabled!\n\nYour data will be automatically exported every 7 days.');
+    }
+  };
+
+  // Auto-backup logic
+  useEffect(() => {
+    if (!autoBackup) return;
+
+    const checkAndBackup = async () => {
+      const lastBackupDate = lastBackup ? new Date(lastBackup) : null;
+      const now = new Date();
+      const daysSinceBackup = lastBackupDate
+        ? Math.floor((now.getTime() - lastBackupDate.getTime()) / (1000 * 60 * 60 * 24))
+        : 999;
+
+      if (daysSinceBackup >= 7) {
+        await exportAllData();
+        const nowStr = now.toISOString();
+        localStorage.setItem('lastBackup', nowStr);
+        setLastBackup(nowStr);
+      }
+    };
+
+    checkAndBackup();
+  }, [autoBackup, lastBackup]);
+
   return (
-    <div className="text-center py-12">
-      <h1 className="text-2xl font-bold text-white mb-4">Stats</h1>
-      <p className="text-gray-400">Coming soon!</p>
+    <div className="space-y-4 pb-8">
+      <h1 className="text-2xl font-bold text-white mb-4">Settings</h1>
+
+      {/* Database Stats */}
+      <div className="card">
+        <h2 className="text-lg font-bold text-white mb-3">Database</h2>
+        <div className="space-y-2 text-gray-300">
+          <div className="flex justify-between">
+            <span>Rhythms:</span>
+            <span className="font-mono">{dbStats?.rhythms || 0}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Recordings:</span>
+            <span className="font-mono">{dbStats?.recordings || 0}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Tags:</span>
+            <span className="font-mono">{dbStats?.tags || 0}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Backup & Restore */}
+      <div className="card">
+        <h2 className="text-lg font-bold text-white mb-3">Backup & Restore</h2>
+
+        {/* Export */}
+        <button
+          onClick={handleExport}
+          className="btn-primary w-full mb-3 flex items-center justify-center gap-2"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+          Export All Data
+        </button>
+
+        {/* Import */}
+        <label className="btn-secondary w-full flex items-center justify-center gap-2 cursor-pointer">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+          </svg>
+          Import Data (Replace All)
+          <input
+            type="file"
+            accept="application/json"
+            onChange={handleImport}
+            className="hidden"
+          />
+        </label>
+
+        {lastBackup && (
+          <p className="text-xs text-gray-400 mt-2">
+            Last backup: {new Date(lastBackup).toLocaleDateString()} at {new Date(lastBackup).toLocaleTimeString()}
+          </p>
+        )}
+      </div>
+
+      {/* Auto-Backup */}
+      <div className="card">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-white">Auto-Backup</h2>
+            <p className="text-sm text-gray-400 mt-1">Export data every 7 days</p>
+          </div>
+          <button
+            onClick={handleAutoBackupToggle}
+            className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${
+              autoBackup ? 'bg-blue-600' : 'bg-gray-600'
+            }`}
+          >
+            <span
+              className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform ${
+                autoBackup ? 'translate-x-7' : 'translate-x-1'
+              }`}
+            />
+          </button>
+        </div>
+      </div>
+
+      {/* Warning */}
+      <div className="card bg-yellow-900/20 border border-yellow-600/30">
+        <div className="flex gap-3">
+          <svg className="w-6 h-6 text-yellow-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <div>
+            <h3 className="text-yellow-500 font-bold mb-1">Important!</h3>
+            <p className="text-yellow-200 text-sm">
+              Always keep backup files safe. Your recordings are stored locally in your browser.
+              Clearing browser data will delete everything.
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

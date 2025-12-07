@@ -108,10 +108,10 @@ export function Waveform({
       }
     };
 
-    let resizeTimeout: NodeJS.Timeout;
+    let resizeTimeout: number;
     const debouncedResize = () => {
       clearTimeout(resizeTimeout);
-      resizeTimeout = setTimeout(handleResize, 100);
+      resizeTimeout = window.setTimeout(handleResize, 100);
     };
 
     window.addEventListener('resize', debouncedResize);
