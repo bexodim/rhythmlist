@@ -206,6 +206,49 @@ export const filterRhythmsByTags = async (tagIds: string[]): Promise<Rhythm[]> =
   });
 };
 
+// ============= DUPLICATE REMOVAL =============
+
+export const removeDuplicateRhythms = async (): Promise<{ removed: number; kept: number }> => {
+  const allRhythms = await getAllRhythms();
+
+  // Group rhythms by primary rhythm NAME (the tag value, not tag ID)
+  const grouped = new Map<string, Rhythm[]>();
+
+  for (const rhythm of allRhythms) {
+    // Get the actual tag to find the rhythm name
+    const tag = await getTagById(rhythm.primaryRhythmNameTag);
+    const rhythmName = tag?.value.toLowerCase().trim() || 'unknown';
+
+    const existing = grouped.get(rhythmName) || [];
+    existing.push(rhythm);
+    grouped.set(rhythmName, existing);
+  }
+
+  let removed = 0;
+  let kept = 0;
+
+  // For each group, keep the most recent one and delete the rest
+  for (const [_name, rhythms] of grouped) {
+    if (rhythms.length > 1) {
+      // Sort by updatedDate descending (newest first)
+      rhythms.sort((a, b) => new Date(b.updatedDate).getTime() - new Date(a.updatedDate).getTime());
+
+      // Keep the first (newest) one
+      kept++;
+
+      // Delete the rest
+      for (let i = 1; i < rhythms.length; i++) {
+        await db.rhythms.delete(rhythms[i].id);
+        removed++;
+      }
+    } else {
+      kept++;
+    }
+  }
+
+  return { removed, kept };
+};
+
 // ============= EXPORT & IMPORT =============
 
 export const exportAllData = async (): Promise<void> => {

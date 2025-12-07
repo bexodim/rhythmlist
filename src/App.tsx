@@ -4,7 +4,7 @@ import { RecordingFlow } from './components/RecordingFlow';
 import { BottomNav } from './components/BottomNav';
 import { AudioPlayer } from './components/AudioPlayer';
 import { RecordingDetailPage } from './components/RecordingDetailPage';
-import { getAllRhythms, getTagById, getRhythmById, getRecordingsByRhythmId, getRecordingById, getTagsByIds, createRecording, updateRhythm, createTag, deleteRecording, updateRecording, exportAllData, importAllData, getAllRecordings } from './db/storage';
+import { getAllRhythms, getTagById, getRhythmById, getRecordingsByRhythmId, getRecordingById, getTagsByIds, createRecording, updateRhythm, createTag, deleteRecording, updateRecording, exportAllData, importAllData, getAllRecordings, removeDuplicateRhythms } from './db/storage';
 import type { Rhythm, Recording } from './types';
 import { importRhythmsData } from './utils/importData';
 import { useAudioPlayback } from './context/AudioPlaybackContext';
@@ -1484,6 +1484,7 @@ function DebugPage() {
 
 // Settings Page
 function SettingsPage() {
+  const navigate = useNavigate();
   const [dbStats, setDbStats] = useState<{ rhythms: number; recordings: number; tags: number } | null>(null);
   const [autoBackup, setAutoBackup] = useState(() => {
     return localStorage.getItem('autoBackup') === 'true';
@@ -1537,8 +1538,13 @@ function SettingsPage() {
       const result = await importAllData(file);
 
       if (result.success) {
-        alert('✅ ' + result.message + '\n\nThe page will now reload.');
-        window.location.reload();
+        alert('✅ ' + result.message + '\n\nNavigating to Rhythms page...');
+        // Navigate to rhythms page instead of reloading
+        navigate('/rhythms');
+        // Force a small delay then reload the page cleanly
+        setTimeout(() => {
+          window.location.href = window.location.origin + '/rhythms';
+        }, 100);
       } else {
         alert('❌ ' + result.message);
       }
@@ -1582,6 +1588,33 @@ function SettingsPage() {
     checkAndBackup();
   }, [autoBackup, lastBackup]);
 
+  const handleRemoveDuplicates = async () => {
+    const confirmed = window.confirm(
+      '⚠️ Remove Duplicate Rhythms\n\n' +
+      'This will:\n' +
+      '- Find rhythms with the same name\n' +
+      '- Keep the most recent version\n' +
+      '- Delete all older duplicates\n\n' +
+      'This cannot be undone. Continue?'
+    );
+
+    if (!confirmed) return;
+
+    try {
+      const result = await removeDuplicateRhythms();
+      alert(`✅ Cleanup complete!\n\nRemoved: ${result.removed} duplicates\nKept: ${result.kept} unique rhythms`);
+
+      // Reload stats
+      const rhythms = await getAllRhythms();
+      const recordings = await getAllRecordings();
+      const tags = await db.tags.toArray();
+      setDbStats({ rhythms: rhythms.length, recordings: recordings.length, tags: tags.length });
+    } catch (error) {
+      console.error('Duplicate removal error:', error);
+      alert('❌ Failed to remove duplicates: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    }
+  };
+
   return (
     <div className="space-y-4 pb-8">
       <h1 className="text-2xl font-bold text-white mb-4">Settings</h1>
@@ -1603,6 +1636,23 @@ function SettingsPage() {
             <span className="font-mono">{dbStats?.tags || 0}</span>
           </div>
         </div>
+      </div>
+
+      {/* Database Maintenance */}
+      <div className="card">
+        <h2 className="text-lg font-bold text-white mb-3">Database Maintenance</h2>
+        <button
+          onClick={handleRemoveDuplicates}
+          className="btn-secondary w-full flex items-center justify-center gap-2"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+          Remove Duplicate Rhythms
+        </button>
+        <p className="text-xs text-gray-400 mt-2">
+          Removes rhythms with the same name, keeping the most recent version
+        </p>
       </div>
 
       {/* Backup & Restore */}
