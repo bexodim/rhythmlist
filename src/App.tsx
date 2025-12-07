@@ -49,11 +49,12 @@ function RhythmListPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   // Use global audio playback context
-  const { playRecording, isPlaying } = useAudioPlayback();
+  const { playRecording, isPlaying, recentlyPlayedRecordings } = useAudioPlayback();
 
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOption, setSortOption] = useState<'name-asc' | 'date-newest' | 'date-oldest' | 'recordings'>('date-newest');
+  const [showRecentlyPlayed, setShowRecentlyPlayed] = useState(false);
   const [selectedFilters, setSelectedFilters] = useState<{
     alternateNames: string[];
     regions: string[];
@@ -201,6 +202,16 @@ function RhythmListPage() {
   const filteredAndSortedRhythms = useMemo(() => {
     let filtered = rhythms;
 
+    // Apply recently played filter
+    if (showRecentlyPlayed) {
+      filtered = filtered.filter(rhythm => {
+        // Check if any of this rhythm's recordings were recently played
+        return rhythm.recordingIds.some(recId =>
+          recentlyPlayedRecordings.includes(recId)
+        );
+      });
+    }
+
     // Apply search query
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
@@ -269,7 +280,7 @@ function RhythmListPage() {
     });
 
     return sorted;
-  }, [rhythms, searchQuery, selectedFilters, sortOption, rhythmFullData]);
+  }, [rhythms, searchQuery, selectedFilters, sortOption, rhythmFullData, showRecentlyPlayed, recentlyPlayedRecordings]);
 
   // Helper functions for filter management
   const toggleFilter = (category: keyof typeof selectedFilters, value: string) => {
@@ -297,6 +308,7 @@ function RhythmListPage() {
       languages: []
     });
     setSearchQuery('');
+    setShowRecentlyPlayed(false);
   };
 
 
@@ -345,6 +357,17 @@ function RhythmListPage() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
         </div>
+
+        {/* Recently Played toggle */}
+        <button
+          onClick={() => setShowRecentlyPlayed(!showRecentlyPlayed)}
+          className={`btn-secondary px-3 py-2 flex items-center gap-2 ${showRecentlyPlayed ? 'bg-blue-600 text-white' : ''}`}
+          title="Show recently played"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </button>
 
         {/* Filter button */}
         <button
@@ -513,12 +536,20 @@ function RhythmListPage() {
       )}
 
       {/* Active filter chips */}
-      {(activeFilterCount > 0 || searchQuery.trim()) && (
+      {(activeFilterCount > 0 || searchQuery.trim() || showRecentlyPlayed) && (
         <div className="flex flex-wrap gap-2 mb-4">
           {searchQuery.trim() && (
             <div className="bg-gray-700 text-white px-3 py-1 rounded-full flex items-center gap-2 text-sm">
               <span>Search: "{searchQuery}"</span>
               <button onClick={() => setSearchQuery('')} className="hover:text-red-400">
+                ×
+              </button>
+            </div>
+          )}
+          {showRecentlyPlayed && (
+            <div className="bg-blue-600 text-white px-3 py-1 rounded-full flex items-center gap-2 text-sm">
+              <span>Recently Played</span>
+              <button onClick={() => setShowRecentlyPlayed(false)} className="hover:text-red-400">
                 ×
               </button>
             </div>
