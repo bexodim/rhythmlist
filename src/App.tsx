@@ -1578,10 +1578,20 @@ function SettingsPage() {
         : 999;
 
       if (daysSinceBackup >= 7) {
-        await exportAllData();
-        const nowStr = now.toISOString();
-        localStorage.setItem('lastBackup', nowStr);
-        setLastBackup(nowStr);
+        // Show confirmation before downloading
+        const confirmed = window.confirm(
+          'Rhythm List - Auto-Backup\n\n' +
+          'Your automatic backup is ready to download.\n\n' +
+          'Click OK to download your backup file now.\n\n' +
+          'You can turn off auto-backup in Settings.'
+        );
+
+        if (confirmed) {
+          await exportAllData();
+          const nowStr = now.toISOString();
+          localStorage.setItem('lastBackup', nowStr);
+          setLastBackup(nowStr);
+        }
       }
     };
 
