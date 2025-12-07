@@ -31,6 +31,7 @@ function App() {
           <Route path="/rhythm/:id" element={<RhythmDetailPage />} />
           <Route path="/recording/:id" element={<RecordingDetailPage />} />
           <Route path="/stats" element={<StatsPage />} />
+          <Route path="/debug" element={<DebugPage />} />
         </Routes>
       </main>
 
@@ -1421,6 +1422,97 @@ function MetadataTagsDisplay({ label, tagIds }: { label: string; tagIds: string[
     <div>
       <span className="text-gray-500">{label}:</span>{' '}
       <span className="text-gray-300">{tags.join(', ')}</span>
+    </div>
+  );
+}
+
+// Debug Page - Check database contents
+function DebugPage() {
+  const [dbInfo, setDbInfo] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadDbInfo = async () => {
+      try {
+        const rhythms = await getAllRhythms();
+        const allRecordings = await getAllRecordings();
+
+        setDbInfo({
+          rhythmCount: rhythms.length,
+          recordingCount: allRecordings.length,
+          rhythms: rhythms,
+          recordings: allRecordings
+        });
+      } catch (error) {
+        console.error('Error loading db info:', error);
+        setDbInfo({ error: String(error) });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadDbInfo();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="text-center py-12">
+        <h1 className="text-2xl font-bold text-white mb-4">Debug Info</h1>
+        <p className="text-gray-400">Loading...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <h1 className="text-2xl font-bold text-white mb-4">Database Debug Info</h1>
+
+      <div className="card">
+        <h2 className="text-xl font-bold text-white mb-2">Summary</h2>
+        <p className="text-gray-300">Rhythms: {dbInfo?.rhythmCount || 0}</p>
+        <p className="text-gray-300">Recordings: {dbInfo?.recordingCount || 0}</p>
+      </div>
+
+      {dbInfo?.error && (
+        <div className="card bg-red-900/20">
+          <h2 className="text-xl font-bold text-red-400 mb-2">Error</h2>
+          <pre className="text-red-300 text-xs overflow-auto">{dbInfo.error}</pre>
+        </div>
+      )}
+
+      <div className="card">
+        <h2 className="text-xl font-bold text-white mb-2">All Rhythms</h2>
+        <pre className="text-gray-300 text-xs overflow-auto max-h-96">
+          {JSON.stringify(dbInfo?.rhythms, null, 2)}
+        </pre>
+      </div>
+
+      <div className="card">
+        <h2 className="text-xl font-bold text-white mb-2">All Recordings</h2>
+        {dbInfo?.recordingCount === 0 ? (
+          <div className="space-y-4">
+            <p className="text-red-400 font-bold">⚠️ NO RECORDINGS FOUND IN DATABASE</p>
+            <div className="bg-yellow-900/30 p-4 rounded">
+              <p className="text-yellow-300 mb-2">Your recordings may be lost. Recovery options:</p>
+              <ol className="text-gray-300 text-sm space-y-2 list-decimal list-inside">
+                <li>Check if you have an export backup file (.json)</li>
+                <li>Check your Downloads folder for any exported backups</li>
+                <li>If you have a backup, use the Import button on the Rhythms page</li>
+              </ol>
+            </div>
+          </div>
+        ) : (
+          <pre className="text-gray-300 text-xs overflow-auto max-h-96">
+            {JSON.stringify(dbInfo?.recordings?.map((r: Recording) => ({
+              id: r.id,
+              fileName: r.fileName,
+              rhythmId: r.rhythmId,
+              duration: r.duration,
+              hasAudioBlob: !!r.audioBlob
+            })), null, 2)}
+          </pre>
+        )}
+      </div>
     </div>
   );
 }
